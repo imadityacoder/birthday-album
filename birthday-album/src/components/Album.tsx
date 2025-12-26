@@ -1,76 +1,52 @@
-import { ScrollControls, Scroll, Image as DreiImage, Text, useScroll } from "@react-three/drei";
+import { ScrollControls, Scroll, Image as DreiImage, useScroll } from "@react-three/drei";
 import { useThree, useFrame } from "@react-three/fiber";
+import { useRef } from "react";
+import * as THREE from "three";
 import confetti from "canvas-confetti";
-
-interface SlideData {
-    image?: string;
-    title: string;
-    caption: string;
-}
-
-const slides: SlideData[] = [
-    {
-        image: "https://picsum.photos/id/1011/800/1200",
-        title: "Charming ",
-        caption: "Your smile lights up every room you walk into.",
-    },
-    {
-        image: "https://picsum.photos/id/1027/800/1200",
-        title: "Elegant",
-        caption: "Grace in every step, kindness in every word.",
-    },
-    {
-        image: "https://picsum.photos/id/1015/800/1200",
-        title: "Adventurous",
-        caption: "Always ready to explore the world with us.",
-    },
-    {
-        image: "https://picsum.photos/id/1016/800/1200",
-        title: "Inspiring",
-        caption: "The role model I've looked up to all my life.",
-    },
-    {
-        title: "Happy Birthday!",
-        caption: "We love you so much! Here's to another amazing year.",
-    },
-];
+import { useStore, slides } from "../store";
+import { SmoothBackground } from "./SmoothBackground";
 
 export const Album = () => {
-    const { width } = useThree((state) => state.viewport);
-    const xW = width > 5 ? width / 3.5 : width / 1.5;
+    const { width, height } = useThree((state) => state.viewport);
 
     return (
-        <ScrollControls pages={slides.length} damping={0.4} horizontal infinite={false}>
-            <AlbumContent width={xW} />
+        <ScrollControls pages={slides.length} damping={4} horizontal={false} infinite={false} snap>
+            <SmoothBackground />
+            <AlbumContent width={width} height={height} />
         </ScrollControls>
     );
 };
 
-const AlbumContent = ({ width }: { width: number }) => {
+const AlbumContent = ({ width, height }: { width: number, height: number }) => {
     const scroll = useScroll();
+    const setSlide = useStore((state) => state.setSlide);
 
-    // Trigger confetti on the last slide
     useFrame(() => {
-        // scroll.offset is 0..1. The last slide is at offset ~1.
-        if (scroll.offset > 0.95) {
-            if (Math.random() > 0.98) {
-                confetti({
-                    particleCount: 50,
-                    spread: 50,
-                    origin: { y: 0.6 }
-                });
-            }
+        // Sync active slide index
+        // We want a snappy feel, but continuous scroll is okay too.
+        const index = Math.round(scroll.offset * (slides.length - 1));
+        setSlide(index);
+
+        // Confetti on last slide
+        if (scroll.offset > 0.95 && Math.random() > 0.98) {
+            confetti({
+                particleCount: 50,
+                spread: 50,
+                origin: { y: 0.6 }
+            });
         }
     });
 
     return (
         <Scroll>
             {slides.map((slide, i) => (
-                <Slide
+                <StackedSlide
                     key={i}
                     data={slide}
                     index={i}
+                    total={slides.length}
                     width={width}
+                    height={height}
                 />
             ))}
         </Scroll>
@@ -78,52 +54,68 @@ const AlbumContent = ({ width }: { width: number }) => {
 };
 
 interface SlideProps {
-    data: SlideData;
+    data: any;
     index: number;
+    total: number;
     width: number;
+    height: number;
 }
 
-const Slide = ({ data, index, width }: SlideProps) => {
-    const gap = 0.5;
-    const x = (width + gap) * index;
+const StackedSlide = ({ data, index, total, width, height }: SlideProps) => {
+    const group = useRef<THREE.Group>(null);
+    const scroll = useScroll();
+
+    // Responsive Card Dimensions
+    // Mobile (width < 5): Width is 85% of screen
+    // Desktop: Width is fixed smaller value
+    const isMobile = width < 5;
+    const cardWidth = isMobile ? width * 0.8 : 3.5;
+    const cardHeight = cardWidth * 1.4;
+
+    useFrame(() => {
+        if (!group.current) return;
+
+        // Exact scroll index (can be fractional): 0..total-1
+        const exact = scroll.offset * (total - 1);
+
+        // delta = index - exact (can be fractional). When delta -> 0, the card is active.
+        const delta = index - exact;
+        const absDelta = Math.abs(delta);
+
+        // t: proximity to active (1 when active exactly, 0 when one index away or more)
+        const t = Math.max(0, 1 - absDelta);
+        const ease = 1 - Math.pow(1 - t, 2); // easeOut quad
+
+        // Stacking and motion parameters
+        const basePeek = cardHeight * 0.15;
+        const baseZGap = 2.0;
+
+        // Target base positions depending on whether card is ahead (below) or passed
+        const baseY = delta > 0 ? -delta * (basePeek + 0.1) : -delta * (height * 0.6);
+        const baseZ = delta > 0 ? -delta * baseZGap : 0;
+        const baseScale = delta > 0 ? Math.max(0.75, 1 - absDelta * 0.05) : 1;
+
+        // Interpolate towards centered active state using ease
+        const y = THREE.MathUtils.lerp(baseY, 0, ease);
+        const z = THREE.MathUtils.lerp(baseZ, 0, ease);
+        const scale = THREE.MathUtils.lerp(baseScale, 1.15, ease); // zoom a bit when active
+
+        group.current.position.set(0, y, z);
+        group.current.scale.setScalar(scale);
+    });
 
     return (
-        <group position={[x, 0, 0]}>
+        <group ref={group}>
+            {/* Visual Card */}
             {data.image && (
                 <DreiImage
                     url={data.image}
-                    scale={[width, width * 1.5]}
+                    scale={[cardWidth, cardHeight]}
                     transparent
+                    radius={0.15}
+                // box-shadow feel?
                 />
             )}
-
-            {/* Title with Parallax feel (slightly in front) */}
-            <Text
-                position={[0, -width * 0.75 - 0.3, 0.2]}
-                fontSize={width * 0.15}
-                font="https://fonts.gstatic.com/s/playfairdisplay/v30/nuFvD-vYSZviVYUb_rj3ij__anPXJzDwcbmjWBN2PKdFvXDXbtM.woff2"
-                color="#fff"
-                anchorX="center"
-                anchorY="top"
-                maxWidth={width}
-                textAlign="center"
-            >
-                {data.title}
-            </Text>
-
-            {/* Caption */}
-            <Text
-                position={[0, -width * 0.75 - 1.0, 0.2]}
-                fontSize={width * 0.08}
-                color="rgba(255, 255, 255, 0.8)"
-                anchorX="center"
-                anchorY="top"
-                maxWidth={width * 1.2}
-                textAlign="center"
-                font="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2"
-            >
-                {data.caption}
-            </Text>
         </group>
     );
 };

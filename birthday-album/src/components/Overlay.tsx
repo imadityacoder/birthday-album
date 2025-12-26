@@ -1,28 +1,42 @@
+import { useStore, slides } from "../store";
+
 export const Overlay = () => {
+    const activeSlide = useStore((state) => state.activeSlide);
+    const slide = slides[activeSlide];
+
+    // We removed the background image div from here because 
+    // it is now handled by the SmoothBackground 3D component.
+
     return (
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between z-10 font-sans p-6 md:p-12">
-            {/* Header */}
-            <div className="flex flex-col items-start animate-fade-in-down">
-                {/* Using border-b for a subtle line */}
-                <h1 className="text-white/90 text-sm tracking-[0.3em] font-light uppercase border-b border-white/20 pb-2 mb-2">
-                    The Memories
-                </h1>
+        <>
+            {/* Content Container - Bottom aligned for mobile */}
+            <div className="absolute top-0 left-0 w-full h-full z-10 flex flex-col justify-end pb-24 px-6 pointer-events-none">
+                <div className="animate-fade-in-up transition-all duration-300 pointer-events-auto">
+                    <div className="text-white/70 tracking-[0.2em] text-xs uppercase mb-2">
+                        Memory {activeSlide + 1}
+                    </div>
+                    <h1 className="text-4xl md:text-5xl font-serif text-white mb-4 drop-shadow-lg">
+                        {slide.title}
+                    </h1>
+                    <p className="text-base md:text-lg text-white/90 font-light leading-relaxed mb-6 max-w-lg drop-shadow-md">
+                        "{slide.caption}"
+                    </p>
+
+                    <button className="px-6 py-2 border border-white/40 rounded-full text-white text-sm backdrop-blur-md hover:bg-white hover:text-black transition-all">
+                        Read More
+                    </button>
+                </div>
             </div>
 
-            {/* Center instruction */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white/30 text-xs tracking-widest uppercase animate-pulse">
-                Scroll / Swipe
+            {/* Vertical Progress Indicators (Right side) */}
+            <div className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 flex flex-col space-y-3">
+                {slides.map((_, i) => (
+                    <div
+                        key={i}
+                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i === activeSlide ? "bg-white h-4" : "bg-white/40"}`}
+                    />
+                ))}
             </div>
-
-            {/* Footer */}
-            <div className="flex flex-col items-end self-end text-right animate-fade-in-up">
-                <h2 className="text-4xl md:text-6xl font-serif text-white drop-shadow-xl italic">
-                    Celebrating You
-                </h2>
-                <p className="text-white/70 mt-2 font-light max-w-xs text-sm md:text-base">
-                    A journey through the moments that make you special.
-                </p>
-            </div>
-        </div>
+        </>
     );
 };
