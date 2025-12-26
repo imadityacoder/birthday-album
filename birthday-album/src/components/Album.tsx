@@ -10,7 +10,7 @@ export const Album = () => {
     const { width, height } = useThree((state) => state.viewport);
 
     return (
-        <ScrollControls pages={slides.length} damping={4} horizontal={false} infinite={false} snap>
+        <ScrollControls pages={slides.length} damping={0.2} horizontal={false} infinite={false}>
             <SmoothBackground />
             <AlbumContent width={width} height={height} />
         </ScrollControls>
@@ -75,33 +75,54 @@ const StackedSlide = ({ data, index, total, width, height }: SlideProps) => {
     useFrame(() => {
         if (!group.current) return;
 
-        // Exact scroll index (can be fractional): 0..total-1
-        const exact = scroll.offset * (total - 1);
+        const currentScrollIndex = scroll.offset * (total - 1);
+        const delta = index - currentScrollIndex;
 
-        // delta = index - exact (can be fractional). When delta -> 0, the card is active.
-        const delta = index - exact;
-        const absDelta = Math.abs(delta);
+        // STACKING LOGIC REFINED
 
-        // t: proximity to active (1 when active exactly, 0 when one index away or more)
-        const t = Math.max(0, 1 - absDelta);
-        const ease = 1 - Math.pow(1 - t, 2); // easeOut quad
+        // Base gap between stacked cards at the bottom
+        // const stackedGap = isMobile ? 0.3 : 0.5;
 
-        // Stacking and motion parameters
-        const basePeek = cardHeight * 0.15;
-        const baseZGap = 2.0;
+        if (delta >= 0) {
+            // Cards coming up from the bottom (or current)
 
-        // Target base positions depending on whether card is ahead (below) or passed
-        const baseY = delta > 0 ? -delta * (basePeek + 0.1) : -delta * (height * 0.6);
-        const baseZ = delta > 0 ? -delta * baseZGap : 0;
-        const baseScale = delta > 0 ? Math.max(0.75, 1 - absDelta * 0.05) : 1;
+            // Y Position:
+            // If delta is 0 (Active), y = 0.
+            // If delta is 1 (Next), y should be lower. 
+            // We want a "bunching" effect.
+            // y = -delta * gap is linear.
+            // y = -Math.pow(delta, 0.5) * gap pulls them closer?
 
-        // Interpolate towards centered active state using ease
-        const y = THREE.MathUtils.lerp(baseY, 0, ease);
-        const z = THREE.MathUtils.lerp(baseZ, 0, ease);
-        const scale = THREE.MathUtils.lerp(baseScale, 1.15, ease); // zoom a bit when active
+            // Let's do linear but tight, so they peek.
+            group.current.position.y = -delta * (cardHeight * 0.15) - (Math.max(0, delta) * 0.1);
 
-        group.current.position.set(0, y, z);
-        group.current.scale.setScalar(scale);
+            // Z Position: Push back
+            group.current.position.z = -delta * 1.5;
+
+            // Scale: Shrink slightly
+            const scale = Math.max(0.8, 1 - delta * 0.05);
+            group.current.scale.setScalar(scale);
+
+            // Opacity/Fade?
+            // Drei Image transparent prop allows opacity control but we need ref access to material.
+            // Simplified: They just stack.
+
+        } else {
+            // Cards that have passed (scroll up and away)
+            // They fly up.
+            // delta is negative. -delta is positive amount passed.
+
+            // We want them to move UP faster than normal scroll to clear view.
+            group.current.position.y = -delta * (height * 0.6); // Move up
+
+            // Z Position: Slight push back or bring forward?
+            // If we bring forward, they block. Push back slightly or keep at 0.
+            // Let's keep at 0.
+            group.current.position.z = 0;
+
+            // Scale
+            group.current.scale.setScalar(1);
+        }
     });
 
     return (
